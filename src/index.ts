@@ -1,11 +1,44 @@
-// playwright-mcp-orchestrator
-// Multi-agent orchestrator for Playwright MCP
-// Connects multiple @playwright/mcp sessions to one Chrome via CDP with tab isolation
+/**
+ * playwright-mcp-orchestrator — entry point
+ *
+ * CLI usage:
+ *   npx tsx src/index.ts [--agents N]
+ *
+ * This starts N @playwright/mcp instances all connected to your running Chrome.
+ * Each agent gets its own port starting at 3200.
+ *
+ * Connect your AI agents:
+ *   Agent 1: http://localhost:3200/mcp
+ *   Agent 2: http://localhost:3201/mcp
+ *   ...
+ */
 
-export { }
+import { launchOrchestrator, shutdownOrchestrator } from './orchestrator.js';
+import { printClaudeConfig } from './config-gen.js';
 
-// TODO: Implementation
-// 1. Connect to Chrome via CDP (ws://127.0.0.1:9222)
-// 2. Spin up multiple @playwright/mcp instances
-// 3. Assign each instance its own tab group
-// 4. Route MCP tool calls to the correct tabs
+const args = process.argv.slice(2);
+const countArg = args.indexOf('--agents');
+const count = countArg !== -1 ? parseInt(args[countArg + 1], 10) : 2;
+
+if (isNaN(count) || count < 1) {
+  console.error('Usage: tsx src/index.ts [--agents N]');
+  process.exit(1);
+}
+
+const handles = await launchOrchestrator(count);
+
+// Graceful shutdown on Ctrl+C
+process.on('SIGINT', () => {
+  console.log('\n[orchestrator] Shutting down…');
+  shutdownOrchestrator(handles);
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  shutdownOrchestrator(handles);
+  process.exit(0);
+});
+
+console.log('\n[orchestrator] Running. Press Ctrl+C to stop.');
+console.log('[orchestrator] Agent MCP endpoints:');
+handles.forEach(h => console.log(`  ${h.config.name}  →  ${h.url}`));
+printClaudeConfig(handles);
